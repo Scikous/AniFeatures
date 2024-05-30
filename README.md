@@ -5,35 +5,16 @@ Based on DeepDanbooru by KichangKim, but semi-simplified and works using PyTorch
 
 Using DeepDanbooru to train a custom model is unfortunately rather difficult to setup and get working if at all on the GPU (I tried and decided it was faster to just rebuild everything necessary). TensorFlow from 2.10 onwards no longer supports running on the GPU on Windows according to [Kiran_Sai_Ramineni](#acknowledgements), through my own experiments I've also confirmed this to be the most likely case. The only theoretical way to work with Windows would've been to downgrade TensorFlow and install the supported CUDA-toolkit and CUDNN, this would've been too much of a hassle and I have no guarantee that they would work with my hardware, so I didn't.
 
-
 # Features
-* Fine-tune an LLM
-* Train and use a custom voice model for TTS (see acknowledgements)
-* Speak to your LLM using STT (see acknowledgements)
+* Download images from Danbooru alongside their tags
+* Train a custom model for detecting tags in an image
+* Download all tags from Danbooru
 
 
-## Table of Contents
-
-* [Vtuber-AI](#vtuber-ai)
-    * [Features](#features)
-    * [Todo List](#todo-list)
-* [Setup](#setup)
-    * [Virtual Environments](#virtual-environments)
-* [Large Language Model (LLM)](#large-language-model-llm)
-    * [Prompt Style](#prompt-style)
-    * [Dataset preparation](#dataset-preparation)
-    * [Training (Fine-tuning)](#training-fine-tuning)
-    * [Inference](#inference)
-* [Voice Model](#voice-model)
-    * [Training](#training)
-        * [Official Guide](#official-guide)
-        * [Unofficial Guide (Windows Only)](#unofficial-guide-windows-only)
-            * [Dataset Creation](#dataset-creation)
-            * [Preprocessing Audio](#preprocessing-audio)
-            * [Audio Labelling](#audio-labelling)
-    * [Training](#training-1)
-    * [Inference](#inference-1)
-* [Acknowledgements](#acknowledgements)
+# Todo
+* [ ] tqdm progress bar to know how training is progressing
+* [ ] a full release with a pre-trained model and downloader.exe
+* [ ] save best model
 
 # Setup
 This is developed and tested on Python 3.11.8.
@@ -73,7 +54,7 @@ The overall usage is simple enough, in the directory in which the `DanbooruDownl
 
 :information_source: username is not to be confused with the User ID
 ```
-python -m DanbooruDownloader dump MyDataset --username <danbooru username> --api-key <danbooru api key> 
+python -m DanbooruDownloader dump MyDataset --username <Danbooru username> --api-key <Danbooru api key> 
 ```
 
 If you don't already have an account or the API key, this is rather straight-forward. I'll skip over the account creation, should be simple enough. For the API key click on **My Account** (top left), and then at the bottom is **API Key**, clicking on **view** will bring you to the API key page where all of your API keys reside, create a new key with **Add** (top right). You can, but don't need to fill in or select anything, just pressing **Create** is enough. Back on the API keys page, the **Key** column will contain the key needed for the downloader.
@@ -81,11 +62,17 @@ If you don't already have an account or the API key, this is rather straight-for
 From everything that is downloaded, only the **images** and the **.sqlite** database are of importance.
 
 # Data preprocessing
-The downloaded images and the corresponding tags will now need to be preprocessed a bit. `data_preprocessor.py` will get all of the **image names** and their corresponding **extensions** from the **.sqlite** database and concatenate them, and gets each image's corresponding list of tags, all of this is written to a single .csv file.
+The downloaded images and the corresponding tags will now need to be preprocessed a bit. Using `data_preprocessor.py`, first, all of the images are tested to find any corrupted images, which are then deleted. Next, all of the **image names** and their corresponding **extensions** from the **.sqlite** database are collected and concatenated, and each image's corresponding list of tags are also collected, all of this is written to a single .csv file. The images will lastly be moved from the subdirectories into a single main directory.
 
-The images will also be moved from the subdirectories into a single main directory.
+# Model Training
+The model training is simple enough, just running the `train.py` file will be enough, provided the data exists and is in the expected format (preprocessing step should handle this). By default the GPU is used (specifically GPU 0, so be sure to check that's the one you want to use), but if it can't be, then the trainer will use the CPU.
 
+The tags are binarizied for faster computing. The DataLoader alongside Dataset modules from torch manage the dataset and splits the data into batches for training.
 
+The tags.txt file that is created, is created and used for evaluation (easier and less redundant than reading the entire .csv file again).
+
+# Unknown
+The `tags.py` (based on [bem13's](#acknowledgements) scripts) retrieves (or can at least) all of the possible tags from Danbooru. Functionally it currently has no purpose as the evaluation requires for the model and list of tags to have the same amount. But maybe it will have a use case eventually (doubt it). So, think of it as an early legacy feature.
 
 
 # Acknowledgements

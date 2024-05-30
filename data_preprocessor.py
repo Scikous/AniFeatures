@@ -2,10 +2,9 @@ import sqlite3
 import csv
 import os
 import shutil
-from torchvision import transforms
 from PIL import Image
-from sklearn.preprocessing import MultiLabelBinarizer
-import pandas as pd
+
+from utils import check_file_exists
 
 def db_to_csv(sqlite_location, csv_filename):
 
@@ -24,7 +23,6 @@ def db_to_csv(sqlite_location, csv_filename):
     cursor.execute(query)
     data = cursor.fetchall()
 
-    print(data)
     # Open a CSV file for writing
     with open(csv_filename, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
@@ -34,13 +32,15 @@ def db_to_csv(sqlite_location, csv_filename):
 
         # Write each row of data to the CSV file
         for row in data:
-            writer.writerow(row)
+            
+            #can't make use of .gif or .swf, etc. file formats
+            if check_file_exists('images/'+row[0]) and (row[0].endswith('.png') or row[0].endswith('.jpg')):
+                writer.writerow(row)
 
     # Close the connection
     conn.close()
 
     print("Data extraction and CSV creation complete!")
-
 
 #moves images from downloaded subdirectories to one single directory
 def images_mover(source_dir, destination_dir):
@@ -50,7 +50,7 @@ def images_mover(source_dir, destination_dir):
     # Iterate through files
     for root, _, files in os.walk(source_dir):
         for filename in files:
-            if ".json" not in filename:
+            if filename.endswith('.png') or filename.endswith('.jpg'):
                 source_path = os.path.join(root, filename)
                 destination_path = os.path.join(destination_dir, filename)
 
@@ -59,42 +59,31 @@ def images_mover(source_dir, destination_dir):
                 print(f"Moved: {source_path} -> {destination_path}")
     print("File moving complete!")
 
+def image_validator(source_dir):
+    for root,_,images in os.walk(source_dir):
+        print(len(images))
+        for img in images:
+            if img.endswith('.jpg') or img.endswith('.png'):
+                img_path = os.path.join(root, img)
+                try:
+                    with Image.open(img_path) as image:
+                        image = image.convert('RGB')
+                except OSError as e:
+                    if "truncated" in str(e):
+                        print(f"Error: Image {img} is corrupted. Deleting...")
+                        os.remove(img_path)
 
-# Preprocess the image
-def preprocess_image(image_path, eval=False):
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
-    if eval==True:
-        image = Image.open(image_path).convert('RGB')
-        image = transform(image)
-        image = image.unsqueeze(0)  # Add batch dimension
-    return image
-
-def preprocess_data(tags_file, eval=False):
-    tags_df = pd.read_csv('tags.csv')
-    image_filenames = tags_df['filename'].values
-    tags = tags_df['tags'].apply(lambda x: x.split())
-
-    if eval:
-        return image_filenames, list(tags)[0]
-    # Binarize tags
-    mlb = MultiLabelBinarizer()
-    binary_tags = mlb.fit_transform(tags)
-    print(mlb.classes_[0])
-    return image_filenames, binary_tags, mlb.classes_
-
+    print("Finished deleting all broken images")
 
 def main():
     sqlite_loc = 'DanbooruDownloader-master\\DanbooruDownloader\\bin\\Debug\\net6.0-windows\\dataset\\danbooru.sqlite'
-    csv_filename = "extracted_data.csv"
+    csv_filename = "metadata.csv"
     images_source_dir = "images"#"DanbooruDownloader-master\\DanbooruDownloader\\bin\Debug\\net6.0-windows\\dataset\\images"  # Replace with your actual source directory
     images_destination_dir = "images2" 
 
+    image_validator('images')
     db_to_csv(sqlite_loc, csv_filename)
-    #images_mover(images_source_dir, images_destination_dir)
+    images_mover(images_source_dir, images_destination_dir)
 
 if __name__ == "__main__":
     main()
