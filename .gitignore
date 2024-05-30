@@ -163,3 +163,8 @@ cython_debug/
 
 DanbooruDownloader-master/DanbooruDownloader/bin
 images/*
+!images/.gitignore
+models/*
+!models/.gitignore
+metadata.csv
+tags.txt
