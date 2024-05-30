@@ -14,7 +14,7 @@ Using DeepDanbooru to train a custom model is unfortunately rather difficult to 
 # Todo
 * [ ] tqdm progress bar to know how training is progressing
 * [ ] a full release with a pre-trained model and downloader.exe
-* [ ] save best model
+* [X] save best model
 
 # Setup
 This is developed and tested on Python 3.11.8.
