@@ -163,9 +163,10 @@ cython_debug/
 
 DanbooruDownloader-master/DanbooruDownloader/bin
 dataset/*
+!dataset/images
+dataset/images/*
 !dataset/images/.gitignore
-!dataset/metadata.csv
-!dataset/tags.txt
 !dataset/tags_to_drop.txt
+
 models/*
 !models/.gitignore
