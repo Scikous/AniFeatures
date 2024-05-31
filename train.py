@@ -10,8 +10,8 @@ import torch.optim as optim
 import pandas as pd
 
 #get images and tags in pandas dataformat and binarize tags for faster processing
-def preprocess_data(tags_file):
-    tags_df = pd.read_csv(tags_file)
+def preprocess_data(metadata_file):
+    tags_df = pd.read_csv(metadata_file)
     image_filenames = tags_df['filename'].values
     tags = tags_df['tags'].apply(lambda x: x.split())
 
@@ -73,8 +73,8 @@ def anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="ani
 
 def main():
     # Load and preprocess tags and get imagefile names
-    tags_file = 'metadata.csv'
-    image_filenames, binary_tags, num_tags = preprocess_data(tags_file)
+    metadata_file = 'dataset/metadata.csv'
+    image_filenames, binary_tags, num_tags = preprocess_data(metadata_file)
     #set image transformation
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -92,7 +92,7 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True)
     
     #train the model
-    anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="anime_tagger3.pth")
+    anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="anime_tagger.pth")
 
 if __name__ == "__main__":
     main()

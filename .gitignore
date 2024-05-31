@@ -162,9 +162,10 @@ cython_debug/
 #.idea/
 
 DanbooruDownloader-master/DanbooruDownloader/bin
-images/*
-!images/.gitignore
+dataset/*
+!dataset/images/.gitignore
+!dataset/metadata.csv
+!dataset/tags.txt
+!dataset/tags_to_drop.txt
 models/*
 !models/.gitignore
-metadata.csv
-tags.txt
