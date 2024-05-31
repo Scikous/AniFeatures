@@ -7,7 +7,7 @@ from torchvision import transforms
 
 # Write tags used in training to file
 def tags_to_txt(tags):
-    with open('tags.txt', mode='w', encoding='utf-8') as file:
+    with open('dataset/tags.txt', mode='w', encoding='utf-8') as file:
         for tag in tags:
             file.write(tag+'\n')
 
@@ -86,7 +86,9 @@ def image_validator(source_dir):
     print("Finished deleting all broken images")
 
 
-def db_to_csv(sqlite_location, csv_filename):
+def db_to_csv(sqlite_location, images_src_dir, csv_file_path, tags_to_drop=None):
+    #make a dataset dir if need be
+    os.makedirs('dataset', exist_ok=True)
 
     conn = sqlite3.connect(sqlite_location)
     # Connect to the database
@@ -101,7 +103,7 @@ def db_to_csv(sqlite_location, csv_filename):
     data = cursor.fetchall()
 
     # Open a CSV file for writing
-    with open(csv_filename, "w", newline="") as csvfile:
+    with open(csv_file_path, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
 
         #DO NOT MODIFY HEADER, this is required in the image and tag preprocessing in the pre-training phase
@@ -110,12 +112,17 @@ def db_to_csv(sqlite_location, csv_filename):
         # Write each row of data to the CSV file
         for row in data:
             #can't make use of .swf and prob other formats. file formats
-            if check_file_exists('images/'+row[0]) and (row[0].endswith('.png') or row[0].endswith('.jpg') or row[0].endswith('.gif')):
-                writer.writerow(row)
+            if check_file_exists('dataset/images/'+row[0]) and (row[0].endswith('.png') or row[0].endswith('.jpg') or row[0].endswith('.gif')):
+                #drop unwanted tags
+                filename = row[0]
+                tags = row[1].split()
+                filtered_tags = [tag for tag in tags if tag not in tags_to_drop]
+                filtered_tag_string = ' '.join(filtered_tags)
+                writer.writerow([filename, filtered_tag_string])
+
+                #writer.writerow(row)
 
     # Close the connection
     conn.close()
 
     print("Data extraction and CSV creation complete!")
-
-

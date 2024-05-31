@@ -16,22 +16,22 @@ def anifeatures_eval(model, tags, images, model_name="anime_tagger.pth"):
             probabilities = outputs.squeeze().numpy()
             predicted_tags = [tags[i] for i, prob in enumerate(probabilities) if prob > threshold]
         return predicted_tags
-    image_path = images[0]#"images2\\test3.jpg"#"images\\84a168e2e0d0814bcc9665be6dac1cf4.png"
-    # Preprocess the image
-    image_tensor = preprocess_image(image_path)
-    #print(image_tensor)
+    
+    for img in images:
+        # Preprocess the image
+        image_tensor = preprocess_image(img)
+        #print(image_tensor)
 
-    predicted_tags = predict_tags(model, image_tensor)
-    print(f"image_filename: {image_path} Predicted tags: {predicted_tags}")
-
+        predicted_tags = predict_tags(model, image_tensor)
+        print(f"image_filename: {img} Predicted tags: {predicted_tags}")
 
 def main():
     # Load tags
-    images = image_loader('images/')
-    tags_file = 'tags.txt'
+    images = image_loader('dataset/images3/')
+    tags_file = 'dataset/tags.txt'
     tags = tags_getter(tags_file)
     model = AniFeatures(num_tags=len(tags))
-    anifeatures_eval(model, tags, images)
+    anifeatures_eval(model, tags, images, model_name="anime_tagger.pth")
 
 if __name__ == "__main__":
     main()

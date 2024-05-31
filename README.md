@@ -72,7 +72,7 @@ The tags are binarizied for faster computing. The DataLoader alongside Dataset m
 The tags.txt file that is created, is created and used for evaluation (easier and less redundant than reading the entire .csv file again).
 
 # Unknown
-The `tags.py` (based on [bem13's](#acknowledgements) scripts) retrieves (or can at least) all of the possible tags from Danbooru. Functionally it currently has no purpose as the evaluation requires for the model and list of tags to have the same amount. But maybe it will have a use case eventually (doubt it). So, think of it as an early legacy feature.
+The `tags.py` (based on [bem13's](#acknowledgements) script) retrieves (or can at least) all of the possible tags from Danbooru. Functionally it currently has no purpose as the evaluation requires for the model and list of tags to have the same amount. But maybe it will have a use case eventually (doubt it). So, think of it as an early legacy feature.
 
 
 # Acknowledgements

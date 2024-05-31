@@ -7,8 +7,9 @@ import torchvision.models as models
 
 #prepares and loads images for training
 class AnimeDataset(Dataset):
-    def __init__(self, image_filenames, binary_tags, transform=None):
+    def __init__(self, image_filenames, binary_tags, image_src_dir='dataset/images', transform=None):
         self.image_filenames = image_filenames
+        self.image_src_dir = image_src_dir
         self.binary_tags = binary_tags
         self.transform = transform
 
@@ -18,7 +19,7 @@ class AnimeDataset(Dataset):
     #apply transform to resize, normalize and tensorify images and binarized tags 
     def __getitem__(self, idx):
         #change 'images' to other path if need be
-        img_name = os.path.join('images', self.image_filenames[idx])
+        img_name = os.path.join(self.image_src_dir, self.image_filenames[idx])
         image = Image.open(img_name).convert('RGB')
         if self.transform:
             image = self.transform(image)
