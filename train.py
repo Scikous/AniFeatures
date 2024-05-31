@@ -1,4 +1,4 @@
-from model import AnimeDataset, AnimeTagger
+from model import AnimeDataset, AniFeatures
 from utils import tags_to_txt
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import train_test_split
@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
 
+#get images and tags in pandas dataformat and binarize tags for faster processing
 def preprocess_data(tags_file):
     tags_df = pd.read_csv(tags_file)
     image_filenames = tags_df['filename'].values
@@ -21,17 +22,16 @@ def preprocess_data(tags_file):
     tags_to_txt(mlb.classes_)
     return image_filenames, binary_tags, len(mlb.classes_)
 
-
+#train model using train/valid datasets and save lowest valid loss model
 def anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="anime_tagger.pth"):
-      # Check CUDA availability and set device
+    # Check CUDA availability and set device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device} Name: {torch.cuda.get_device_name(device)}")
     # Define model
-    model = AnimeTagger(num_tags).to(device)
+    model = AniFeatures(num_tags).to(device)
     # Define loss and optimizer
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    #######new
     best_val_loss = float('inf')
 
     # Training loop
@@ -72,36 +72,27 @@ def anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="ani
 
 
 def main():
-    # Load tags
+    # Load and preprocess tags and get imagefile names
     tags_file = 'metadata.csv'
     image_filenames, binary_tags, num_tags = preprocess_data(tags_file)
+    #set image transformation
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
-# Split data into training and validation sets
+    #Split data into training and validation sets
     train_indices, val_indices = train_test_split(range(len(image_filenames)), test_size=0.2, random_state=42)
     train_dataset = Subset(AnimeDataset(image_filenames, binary_tags, transform=transform), train_indices)
     val_dataset = Subset(AnimeDataset(image_filenames, binary_tags, transform=transform), val_indices)
-
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, pin_memory=True, num_workers=6)
-    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True, num_workers=2)
-
+    
+    #adjust batch_size and num_workers based on personal hardware resources
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True)
+    
+    #train the model
     anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="anime_tagger3.pth")
-
-    # dataset = AnimeDataset(image_filenames, binary_tags, transform=transform)
-    # dataloader = DataLoader(dataset, batch_size=32, shuffle=True, pin_memory=True)
-
-    # anifeatures_trainer(dataloader, num_tags)
-    print(num_tags)
 
 if __name__ == "__main__":
     main()
-
-# with torch.no_grad():
-#     out_data = model()
-#     print(out_data)
-
-# Evaluation code can be added here to check model performance on a validation set.

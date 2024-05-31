@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 import os
 import torchvision.models as models
 
-
+#prepares and loads images for training
 class AnimeDataset(Dataset):
     def __init__(self, image_filenames, binary_tags, transform=None):
         self.image_filenames = image_filenames
@@ -15,6 +15,7 @@ class AnimeDataset(Dataset):
     def __len__(self):
         return len(self.image_filenames)
 
+    #apply transform to resize, normalize and tensorify images and binarized tags 
     def __getitem__(self, idx):
         #change 'images' to other path if need be
         img_name = os.path.join('images', self.image_filenames[idx])
@@ -24,11 +25,11 @@ class AnimeDataset(Dataset):
         tags = torch.tensor(self.binary_tags[idx], dtype=torch.float32)
         return image, tags
 
-
-class AnimeTagger(nn.Module):
+#defines the deep neural network architecture
+class AniFeatures(nn.Module):
     def __init__(self, num_tags):
-        super(AnimeTagger, self).__init__()
-        self.base_model = models.resnet152(pretrained=True)
+        super(AniFeatures, self).__init__()
+        self.base_model = models.resnet152(weights='ResNet152_Weights.DEFAULT')
         self.base_model.fc = nn.Linear(self.base_model.fc.in_features, num_tags)
 
     def forward(self, x):
