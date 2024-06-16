@@ -44,7 +44,6 @@ Deactivate env:
 ```
 Then just delete the venv folder
 
-
 # DanbooruDownloader
 :warning: There's no guarantee this will work long term, and the download method creats a little bit of excess in our use case. But, I have no short term desire to create something better as this works.
 
@@ -63,6 +62,9 @@ From everything that is downloaded, only the **images** and the **.sqlite** data
 
 # Data preprocessing
 The downloaded images and the corresponding tags will now need to be preprocessed a bit. Using `data_preprocessor.py`, first, all of the images are tested to find any corrupted images, which are then deleted. Next, all of the **image names** and their corresponding **extensions** from the **.sqlite** database are collected and concatenated, and each image's corresponding list of tags are also collected, all of this is written to a single .csv file. The images will lastly be moved from the subdirectories into a single main directory.
+
+:warning: **csv_to_csv** function should always be run after **db_to_csv**
+It is also possible to use the **csv_to_csv** function to transfer custom images over to the final `metadata.csv`.
 
 # Model Training
 The model training is simple enough, just running the `train.py` file will be enough, provided the data exists and is in the expected format (preprocessing step should handle this). By default the GPU is used (specifically GPU 0, so be sure to check that's the one you want to use), but if it can't be, then the trainer will use the CPU.

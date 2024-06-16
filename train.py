@@ -14,12 +14,12 @@ def preprocess_data(metadata_file):
     tags_df = pd.read_csv(metadata_file)
     image_filenames = tags_df['filename'].values
     tags = tags_df['tags'].apply(lambda x: x.split())
-
     # Binarize tags
     mlb = MultiLabelBinarizer()
     binary_tags = mlb.fit_transform(tags)
     print(len(mlb.classes_),mlb.classes_)
-    tags_to_txt(mlb.classes_)
+    #dun worry about it, uses metadata file for name
+    tags_to_txt(mlb.classes_, tags_file_path=metadata_file)
     return image_filenames, binary_tags, len(mlb.classes_)
 
 #train model using train/valid datasets and save lowest valid loss model
@@ -75,6 +75,7 @@ def main():
     # Load and preprocess tags and get imagefile names
     metadata_file = 'dataset/metadata.csv'
     image_filenames, binary_tags, num_tags = preprocess_data(metadata_file)
+    image_src_dir = "dataset/images"
     #set image transformation
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -84,15 +85,16 @@ def main():
 
     #Split data into training and validation sets
     train_indices, val_indices = train_test_split(range(len(image_filenames)), test_size=0.2, random_state=42)
-    train_dataset = Subset(AnimeDataset(image_filenames, binary_tags, transform=transform), train_indices)
-    val_dataset = Subset(AnimeDataset(image_filenames, binary_tags, transform=transform), val_indices)
+    train_dataset = Subset(AnimeDataset(image_filenames, binary_tags, image_src_dir=image_src_dir, transform=transform), train_indices)
+    val_dataset = Subset(AnimeDataset(image_filenames, binary_tags, image_src_dir=image_src_dir, transform=transform), val_indices)
     
     #adjust batch_size and num_workers based on personal hardware resources
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True)
     
     #train the model
-    anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="anime_tagger.pth")
+    model_name = "anime_tagger.pth"
+    anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name=model_name)
 
 if __name__ == "__main__":
     main()

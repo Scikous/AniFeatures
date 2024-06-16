@@ -6,11 +6,15 @@ from PIL import Image
 from torchvision import transforms
 
 # Write tags used in training to file
-def tags_to_txt(tags):
-    with open('dataset/tags.txt', mode='w', encoding='utf-8') as file:
+def tags_to_txt(tags, tags_file_path=None):
+    if tags_file_path == None:
+        'dataset/tags.txt'
+    else:
+       tags_file_path =  tags_file_path[:-4] + '_tags.txt'
+    print(tags_file_path)   
+    with open(tags_file_path, mode='w', encoding='utf-8') as file:
         for tag in tags:
             file.write(tag+'\n')
-
     print("finished tagging")
 
 #read tags from .txt file and return as a list
@@ -86,7 +90,7 @@ def image_validator(source_dir):
     print("Finished deleting all broken images")
 
 
-def db_to_csv(sqlite_location, images_src_dir, csv_file_path, tags_to_drop=None):
+def db_to_csv(sqlite_location, csv_file_path, images_src_dir='dataset/images/', tags_to_drop=None,):
     #make a dataset dir if need be
     os.makedirs('dataset', exist_ok=True)
 
@@ -111,18 +115,33 @@ def db_to_csv(sqlite_location, images_src_dir, csv_file_path, tags_to_drop=None)
 
         # Write each row of data to the CSV file
         for row in data:
-            #can't make use of .swf and prob other formats. file formats
-            if check_file_exists('dataset/images/'+row[0]) and (row[0].endswith('.png') or row[0].endswith('.jpg') or row[0].endswith('.gif')):
+            #print(row)
+            #can't make use of .swf and prob some other formats
+            if check_file_exists(images_src_dir+row[0]) and not row[0].endswith('.swf'): #(row[0].endswith('.png') or row[0].endswith('.jpg') or  or row[0].endswith('.gif')):
                 #drop unwanted tags
                 filename = row[0]
                 tags = row[1].split()
                 filtered_tags = [tag for tag in tags if tag not in tags_to_drop]
-                filtered_tag_string = ' '.join(filtered_tags)
-                writer.writerow([filename, filtered_tag_string])
-
-                #writer.writerow(row)
-
+                if filtered_tags:
+                    filtered_tag_string = ' '.join(filtered_tags)
+                    writer.writerow([filename, filtered_tag_string])
+                else:
+                    continue
+                
     # Close the connection
     conn.close()
 
     print("Data extraction and CSV creation complete!")
+
+def csv_to_csv(csv_from_path, csv_to_path):
+    # Open the source file in read mode and destination file in append mode
+    with open(csv_from_path, 'r') as source, open(csv_to_path, 'a', newline='') as destination:
+    # Create reader and writer objects
+        reader = csv.reader(source)
+        writer = csv.writer(destination)
+        # Skip the header row if it exists (optional - adjust based on your CSV)
+        next(reader, None)  # Read and discard the header row from source
+
+        # Write data from source to destination (appending)
+        for row in reader:
+            writer.writerow(row)
