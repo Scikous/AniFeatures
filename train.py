@@ -18,7 +18,7 @@ def preprocess_data(metadata_file):
     mlb = MultiLabelBinarizer()
     binary_tags = mlb.fit_transform(tags)
     print(len(mlb.classes_),mlb.classes_)
-    #dun worry about it, uses metadata file for name
+    #dun worry about it, uses metadata file for tag file name
     tags_to_txt(mlb.classes_, tags_file_path=metadata_file)
     return image_filenames, binary_tags, len(mlb.classes_)
 
