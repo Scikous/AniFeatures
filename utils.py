@@ -10,6 +10,7 @@ def tags_to_txt(tags, tags_file_path=None):
     if tags_file_path == None:
         'dataset/tags.txt'
     else:
+       #remove .csv and replace with .txt
        tags_file_path =  tags_file_path[:-4] + '_tags.txt'
     print(tags_file_path)   
     with open(tags_file_path, mode='w', encoding='utf-8') as file:
