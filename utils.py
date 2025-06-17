@@ -4,13 +4,13 @@ import shutil
 import sqlite3
 from PIL import Image
 from torchvision import transforms
+import json
 
 # Write tags used in training to file
 def tags_to_txt(tags, tags_file_path=None):
     if tags_file_path == None:
         'dataset/tags.txt'
     else:
-       #remove .csv and replace with .txt
        tags_file_path =  tags_file_path[:-4] + '_tags.txt'
     print(tags_file_path)   
     with open(tags_file_path, mode='w', encoding='utf-8') as file:
@@ -53,7 +53,7 @@ def process_images_in_directory(source_dir, image_processor):
     """
     for root, _, images in os.walk(source_dir):
         for img in images:
-            if img.endswith('.png') or img.endswith('.jpg'):
+            if img.endswith('.png') or img.endswith('.jpg') or img.endswith('.jpeg'):
                 img_path = os.path.join(root, img)
                 image_processor(img_path)
 
@@ -64,7 +64,7 @@ def image_loader(source_dir):
         imgs.append(img_path)
 
     process_images_in_directory(source_dir, add_to_list)
-    print("Images loading complete!")
+    print("Images loading complete!", imgs)
     return imgs
 
 def image_mover(source_dir, destination_dir):
@@ -91,7 +91,7 @@ def image_validator(source_dir):
     print("Finished deleting all broken images")
 
 
-def db_to_csv(sqlite_location, csv_file_path, images_src_dir='dataset/images/', tags_to_drop=None,):
+def db_to_csv(sqlite_location, images_src_dir, csv_file_path, tags_to_drop=None):
     #make a dataset dir if need be
     os.makedirs('dataset', exist_ok=True)
 
@@ -140,9 +140,70 @@ def csv_to_csv(csv_from_path, csv_to_path):
     # Create reader and writer objects
         reader = csv.reader(source)
         writer = csv.writer(destination)
+
         # Skip the header row if it exists (optional - adjust based on your CSV)
         next(reader, None)  # Read and discard the header row from source
 
         # Write data from source to destination (appending)
         for row in reader:
             writer.writerow(row)
+
+def get_img_dimensions(image_path):
+    image = Image.open(image_path).convert('RGB')
+    return image.size
+
+def get_file_extension(file_path):
+    return os.path.splitext(file_path)[1][1:]#avoid the period
+
+def tagged_images_to_csv(tagged_images: list, csv_file_path: str):
+    with open(csv_file_path, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+
+        #DO NOT MODIFY HEADER, this is required in the image and tag preprocessing in the pre-training phase
+        writer.writerow(["filename","tags", "img_width", "img_height"])
+
+        # Write each image and its tags to the CSV file
+        for tagged_img in tagged_images:
+            img_dimensions = get_img_dimensions(tagged_img[0])
+            extension = get_file_extension(tagged_img[0])
+            filename = os.path.basename(tagged_img[0])
+            tags = tagged_img[1]
+            row = [filename] + [extension] + [' '.join(tags)] + [img_dimensions[0]] + [img_dimensions[1]]
+            writer.writerow(row)
+
+def tagged_images_to_json(tagged_images: list, json_file_path: str):
+  """
+  Saves a list of tagged images to a JSON file.
+
+  Args:
+      tagged_images (list): A list of tuples, where each tuple contains:
+          - The image path (string)
+          - A list of tags (list of strings)
+      json_file_path (str): The path to the output JSON file.
+  """
+
+  data = []
+  for tagged_img in tagged_images:
+      img_path = tagged_img[0]
+      tags = tagged_img[1]
+      img_dimensions = get_img_dimensions(img_path) 
+      extension = get_file_extension(img_path)
+      filename = os.path.basename(img_path)
+
+      data.append({
+          "filename": filename,
+          "extension": extension, 
+          "tags": tags,
+          "img_width": img_dimensions[0],
+          "img_height": img_dimensions[1]
+      })
+
+  with open(json_file_path, "w") as json_file:
+      json.dump(data, json_file, indent=4)
+
+
+def read_json(json_path):
+    # Open the source file in read mode and destination file in append mode
+    with open(json_path, 'r') as json_file:
+        data = json.load(json_file)
+    return data

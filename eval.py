@@ -1,6 +1,6 @@
 import torch
 from model import AniFeatures
-from utils import tags_getter, preprocess_image, image_loader
+from utils import tags_getter, preprocess_image, image_loader, tagged_images_to_json
 
 #use a model to evaluate on image(s) and get the corresponding tags for each one
 def anifeatures_eval(model, tags, images, threshold=0.5, model_name="anime_tagger.pth"):
@@ -22,17 +22,17 @@ def anifeatures_eval(model, tags, images, threshold=0.5, model_name="anime_tagge
         #print(image_tensor)
         predicted_tags = predict_tags(model, image_tensor)
         image_tags.append((img, predicted_tags))
-       # print(f"image_filename: {img} Predicted tags: {predicted_tags}\n")
     return image_tags
+
 
 def main():
     # Load tags
-    images = image_loader('dataset/images/')
+    images = image_loader('dataset/images4/')
     tags_file = 'dataset/metadata_tags.txt'
+    tagged_imgs_csv = 'dataset/tagged_imgs.json'
     tags = tags_getter(tags_file)
     model = AniFeatures(num_tags=len(tags))
-    results = anifeatures_eval(model, tags, images, threshold=0.7, model_name="anime_tagger.pth")
-    print(results)
-    
+    results = anifeatures_eval(model, tags, images, threshold=0.45,model_name="anime_tagger2.pth")
+    tagged_images_to_json(results, tagged_imgs_csv)
 if __name__ == "__main__":
     main()

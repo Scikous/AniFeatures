@@ -18,7 +18,7 @@ def preprocess_data(metadata_file):
     mlb = MultiLabelBinarizer()
     binary_tags = mlb.fit_transform(tags)
     print(len(mlb.classes_),mlb.classes_)
-    #dun worry about it, uses metadata file for tag file name
+    #dun worry about it
     tags_to_txt(mlb.classes_, tags_file_path=metadata_file)
     return image_filenames, binary_tags, len(mlb.classes_)
 
@@ -74,8 +74,9 @@ def anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="ani
 def main():
     # Load and preprocess tags and get imagefile names
     metadata_file = 'dataset/metadata.csv'
-    image_filenames, binary_tags, num_tags = preprocess_data(metadata_file)
     image_src_dir = "dataset/images"
+    
+    image_filenames, binary_tags, num_tags = preprocess_data(metadata_file)
     #set image transformation
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
