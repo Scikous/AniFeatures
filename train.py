@@ -1,101 +1,145 @@
-from model import AnimeDataset, AniFeatures
-from utils import tags_to_txt
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.model_selection import train_test_split
-from torchvision import transforms
-from torch.utils.data import DataLoader, Subset
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
+import timm
 import pandas as pd
+from PIL import Image
+import os
 
-#get images and tags in pandas dataformat and binarize tags for faster processing
-def preprocess_data(metadata_file):
-    tags_df = pd.read_csv(metadata_file)
-    image_filenames = tags_df['filename'].values
-    tags = tags_df['tags'].apply(lambda x: x.split())
-    # Binarize tags
-    mlb = MultiLabelBinarizer()
-    binary_tags = mlb.fit_transform(tags)
-    print(len(mlb.classes_),mlb.classes_)
-    #dun worry about it
-    tags_to_txt(mlb.classes_, tags_file_path=metadata_file)
-    return image_filenames, binary_tags, len(mlb.classes_)
+# --- Configuration ---
+# Path to your CSV file with (image_A, image_B, label)
+CSV_PATH = 'preferences.csv'
+# Model choice from timm library. DINOv2 pre-trained ViT is excellent.
+MODEL_NAME = 'vit_large_patch14_dinov2.lvd142m' # A powerful Vision Transformer
+# Training parameters
+BATCH_SIZE = 16  # Adjust based on your VRAM. 16 should be fine on a 4090.
+LEARNING_RATE = 1e-5 # Use a small learning rate for fine-tuning
+EPOCHS = 50
+MARGIN = 0.5 # The margin for the loss function
+IMG_SIZE = 224 # ViTs are often trained on 224x224
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-#train model using train/valid datasets and save lowest valid loss model
-def anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="anime_tagger.pth"):
-    # Check CUDA availability and set device
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device} Name: {torch.cuda.get_device_name(device)}")
-    # Define model
-    model = AniFeatures(num_tags).to(device)
-    # Define loss and optimizer
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    best_val_loss = float('inf')
+# --- 1. Custom Dataset Class ---
+class PreferenceDataset(Dataset):
+    def __init__(self, csv_file, transform=None):
+        """
+        Args:
+            csv_file (string): Path to the csv file with annotations.
+            transform (callable, optional): Optional transform to be applied on a sample.
+        """
+        self.preferences_df = pd.read_csv(csv_file, header=None, names=['img_a', 'img_b', 'label'])
+        self.transform = transform
 
-    # Training loop
-    for epoch in range(10):  # Number of epochs
-        print(f"Epoch {epoch+1} started")
-        model.train()
+    def __len__(self):
+        return len(self.preferences_df)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img_a_path = self.preferences_df.iloc[idx, 0]
+        img_b_path = self.preferences_df.iloc[idx, 1]
+        
+        # Check if paths are valid
+        if not os.path.exists(img_a_path):
+            raise FileNotFoundError(f"Image not found at {img_a_path}")
+        if not os.path.exists(img_b_path):
+            raise FileNotFoundError(f"Image not found at {img_b_path}")
+            
+        image_a = Image.open(img_a_path).convert('RGB')
+        image_b = Image.open(img_b_path).convert('RGB')
+        
+        label = self.preferences_df.iloc[idx, 2]
+        
+        if self.transform:
+            image_a = self.transform(image_a)
+            image_b = self.transform(image_b)
+            
+        return image_a, image_b, torch.tensor(label, dtype=torch.float32)
+
+# --- 2. The Siamese Network Architecture ---
+class SiameseNetwork(nn.Module):
+    def __init__(self, model_name=MODEL_NAME, pretrained=True):
+        super(SiameseNetwork, self).__init__()
+        # Load the pre-trained model as the backbone
+        self.backbone = timm.create_model(model_name, pretrained=pretrained)
+        
+        # Get the number of input features for the model's classifier
+        # For ViT, it's model.head.in_features
+        num_ftrs = self.backbone.head.in_features
+        
+        # Replace the classifier head with a single output neuron
+        # This neuron will output the "aesthetic score"
+        self.backbone.head = nn.Linear(num_ftrs, 1)
+
+    def forward_one(self, x):
+        """Passes one image through the backbone."""
+        return self.backbone(x)
+
+    def forward(self, image_a, image_b):
+        """Passes both images through the shared-weight backbone."""
+        score_a = self.forward_one(image_a)
+        score_b = self.forward_one(image_b)
+        # Squeeze the output to remove the extra dimension [BATCH_SIZE, 1] -> [BATCH_SIZE]
+        return score_a.squeeze(), score_b.squeeze()
+
+# --- 3. The Training Loop ---
+def train_model():
+    print(f"Using device: {DEVICE}")
+
+    # Define image transformations
+    # Use the normalization stats recommended for the pre-trained model
+    data_config = timm.data.resolve_model_data_config(MODEL_NAME)
+    transform = timm.data.create_transform(**data_config)
+    
+    print("Data Transforms:")
+    print(transform)
+
+    # Create dataset and dataloader
+    dataset = PreferenceDataset(csv_file=CSV_PATH, transform=transform)
+    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
+
+    # Initialize model, loss, and optimizer
+    model = SiameseNetwork().to(DEVICE)
+    criterion = nn.MarginRankingLoss(margin=MARGIN)
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    
+    print(f"Starting training for {EPOCHS} epochs...")
+    
+    for epoch in range(EPOCHS):
         running_loss = 0.0
-        for images, tags in train_loader:
-            images = images.to(device)
-            tags = tags.to(device)
+        model.train() # Set model to training mode
+        
+        for i, (image_a, image_b, labels) in enumerate(dataloader):
+            image_a, image_b, labels = image_a.to(DEVICE), image_b.to(DEVICE), labels.to(DEVICE)
+            
+            # Zero the parameter gradients
             optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, tags)
+            
+            # Forward pass
+            score_a, score_b = model(image_a, image_b)
+            
+            # Calculate loss
+            loss = criterion(score_a, score_b, labels)
+            
+            # Backward pass and optimize
             loss.backward()
             optimizer.step()
+            
             running_loss += loss.item()
-        avg_train_loss = running_loss / len(train_loader)
-        print(f"Training Loss: {avg_train_loss}")
+            if (i + 1) % 50 == 0: # Print every 50 batches
+                print(f'Epoch [{epoch+1}/{EPOCHS}], Batch [{i+1}/{len(dataloader)}], Loss: {loss.item():.4f}')
+        
+        avg_loss = running_loss / len(dataloader)
+        print(f'--- End of Epoch [{epoch+1}/{EPOCHS}], Average Loss: {avg_loss:.4f} ---')
 
-        # Validation loop
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for images, tags in val_loader:
-                images = images.to(device)
-                tags = tags.to(device)
-                outputs = model(images)
-                loss = criterion(outputs, tags)
-                val_loss += loss.item()
-        avg_val_loss = val_loss / len(val_loader)
-        print(f"Validation Loss: {avg_val_loss}")
-
-        # Save the best model
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            torch.save(model.state_dict(), f'models/{model_save_name}')
-            print(f"Model saved with Validation Loss: {best_val_loss}")
-
-
-def main():
-    # Load and preprocess tags and get imagefile names
-    metadata_file = 'dataset/metadata.csv'
-    image_src_dir = "dataset/images"
+    print('Finished Training')
     
-    image_filenames, binary_tags, num_tags = preprocess_data(metadata_file)
-    #set image transformation
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
+    # Save the trained model weights
+    torch.save(model.state_dict(), 'aesthetic_siamese_model.pth')
+    print('Model saved to aesthetic_siamese_model.pth')
 
-    #Split data into training and validation sets
-    train_indices, val_indices = train_test_split(range(len(image_filenames)), test_size=0.2, random_state=42)
-    train_dataset = Subset(AnimeDataset(image_filenames, binary_tags, image_src_dir=image_src_dir, transform=transform), train_indices)
-    val_dataset = Subset(AnimeDataset(image_filenames, binary_tags, image_src_dir=image_src_dir, transform=transform), val_indices)
-    
-    #adjust batch_size and num_workers based on personal hardware resources
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True)
-    
-    #train the model
-    model_name = "anime_tagger.pth"
-    anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name=model_name)
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    train_model()
