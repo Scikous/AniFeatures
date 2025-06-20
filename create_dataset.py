@@ -74,12 +74,12 @@ class ImageLabeler:
 
         # Display images
         img1 = Image.open(self.img1_path)
-        img1.thumbnail((400, 400))
+        img1.thumbnail((800, 800))
         self.photo1 = ImageTk.PhotoImage(img1)
         self.left_image_label.config(image=self.photo1)
 
         img2 = Image.open(self.img2_path)
-        img2.thumbnail((400, 400))
+        img2.thumbnail((800, 800))
         self.photo2 = ImageTk.PhotoImage(img2)
         self.right_image_label.config(image=self.photo2)
 

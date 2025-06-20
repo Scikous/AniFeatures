@@ -2,23 +2,34 @@ import torch
 import timm
 from PIL import Image
 from train import SiameseNetwork
+import torchvision.transforms as transforms
+
 # Assume the SiameseNetwork class definition is available from the training script
 
 # --- Configuration ---
-MODEL_PATH = 'aesthetic_siamese_model.pth'
-IMG_PATH_1 = 'path/to/your/art1.jpg'
-IMG_PATH_2 = 'path/to/your/art2.jpg'
+MODEL_PATH = 'best_aesthetic_model.pth'
+
+# IMG_PATH_1 = 'dataset/images_unlabeled/dqulb9xh9m0f1.jpeg'
+IMG_PATH_1 = 'dataset/images_unlabeled/videoframe_179354.png'
+IMG_PATH_2 = 'dataset/images_unlabeled/126631474_p9_master1200.jpg'
 MODEL_NAME = 'vit_large_patch14_dinov2.lvd142m'
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-# --- Load Model and Transforms ---
-model = SiameseNetwork(model_name=MODEL_NAME, pretrained=False) # Not loading timm pretrained weights
+# --- Load Model ---
+model = SiameseNetwork(model_name=MODEL_NAME, pretrained=False)
 model.load_state_dict(torch.load(MODEL_PATH))
 model.to(DEVICE)
-model.eval() # Set model to evaluation mode
+model.eval()
 
+# --- Create Matching Transform ---
 data_config = timm.data.resolve_model_data_config(model.backbone)
-transform = timm.data.create_transform(**data_config)
+input_size = data_config['input_size']
+transform = transforms.Compose([
+    transforms.Resize(size=input_size[1:], interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
+    transforms.CenterCrop(size=input_size[1:]),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=data_config['mean'], std=data_config['std']),
+])
 
 # --- Prepare Images ---
 def prepare_image(image_path):
