@@ -69,11 +69,17 @@ The project follows a simple three-step process: **Create Data -> Train Model ->
 This is the most important step. The quality of your model depends entirely on the quality and quantity of your labeled data.
 
 1.  **Populate the Directory:** Place all the images you want to use for training into the `dataset/images_unlabeled/` folder.
-2.  **Run the Labeling Tool:** Execute the `create_dataset.py` script.
+2.  **Resolve Name Clashes (If Necessary):** The script first checks if any files in `dataset/images_unlabeled/` have the *same name* as files already in `dataset/images/`.
+    *   If no clashes are found, the script proceeds directly to labeling.
+    *   If clashes are found, a special **"Resolve Name Clashes" GUI** will open. For each clash, it will show you the new image and the existing one side-by-side, giving you two options:
+        *   **Delete New Image:** Permanently removes the new image if it's a true duplicate or unwanted.
+        *   **Keep & Rename New Image:** Allows you to provide a new name for the file if it's a different, valuable image that you want to keep.
+    The main labeling application will only start after all clashes have been resolved.
+3.  **Run the Labeling Tool:** Execute the `create_dataset.py` script.
     ```bash
     python create_dataset.py
     ```
-3.  **Start Labeling:** A GUI window will appear showing two images. Use the buttons or arrow keys to record your preference:
+4.  **Start Labeling:** A GUI window will appear showing two images. Use the buttons or arrow keys to record your preference:
     *   **Left Arrow / Left Button:** You prefer the left image (`-1.0`).
     *   **Right Arrow / Right Button:** You prefer the right image (`1.0`).
     *   **Down Arrow / Down Button:** The images are of equal quality (`0.0`). *Note: It's often better to force a choice to give the model a stronger signal.*

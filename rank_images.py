@@ -9,7 +9,7 @@ from tqdm import tqdm # A library for nice progress bars (pip install tqdm)
 
 # --- Configuration ---
 MODEL_PATH = 'best_aesthetic_model.pth'
-IMAGE_DIR = 'dataset/images_unlabeled/' # The directory containing images to rank
+IMAGE_DIR = 'dataset/images_compare/' # The directory containing images to rank
 TOP_K = 10 # How many of the top-ranked images to display at the end
 
 # --- Model & Device Setup ---
