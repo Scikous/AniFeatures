@@ -1,101 +1,167 @@
-from model import AnimeDataset, AniFeatures
-from utils import tags_to_txt
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.model_selection import train_test_split
-from torchvision import transforms
-from torch.utils.data import DataLoader, Subset
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
+import timm
 import pandas as pd
+from PIL import Image
+import os
+import numpy as np
+from sklearn.model_selection import train_test_split
 
-#get images and tags in pandas dataformat and binarize tags for faster processing
-def preprocess_data(metadata_file):
-    tags_df = pd.read_csv(metadata_file)
-    image_filenames = tags_df['filename'].values
-    tags = tags_df['tags'].apply(lambda x: x.split())
-    # Binarize tags
-    mlb = MultiLabelBinarizer()
-    binary_tags = mlb.fit_transform(tags)
-    print(len(mlb.classes_),mlb.classes_)
-    #dun worry about it
-    tags_to_txt(mlb.classes_, tags_file_path=metadata_file)
-    return image_filenames, binary_tags, len(mlb.classes_)
+# --- Configuration ---
+CSV_PATH = 'labels.csv'
+MODEL_NAME = 'vit_large_patch14_dinov2.lvd142m'
+BATCH_SIZE = 4 # Reduced slightly to be safer with validation overhead
+LEARNING_RATE = 1e-5
+EPOCHS = 50 # The maximum number of epochs to run
+MARGIN = 0.5
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-#train model using train/valid datasets and save lowest valid loss model
-def anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name="anime_tagger.pth"):
-    # Check CUDA availability and set device
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device} Name: {torch.cuda.get_device_name(device)}")
-    # Define model
-    model = AniFeatures(num_tags).to(device)
-    # Define loss and optimizer
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    best_val_loss = float('inf')
+# --- NEW: Early Stopping & Validation Configuration ---
+VALIDATION_SPLIT = 0.2 # Use 20% of the data for validation
+PATIENCE = 2 # Stop training if val loss doesn't improve for 5 epochs
+BEST_MODEL_PATH = 'best_aesthetic_model.pth'
 
-    # Training loop
-    for epoch in range(10):  # Number of epochs
-        print(f"Epoch {epoch+1} started")
-        model.train()
-        running_loss = 0.0
-        for images, tags in train_loader:
-            images = images.to(device)
-            tags = tags.to(device)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, tags)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        avg_train_loss = running_loss / len(train_loader)
-        print(f"Training Loss: {avg_train_loss}")
+# --- 1. Custom Dataset Class (No changes needed) ---
+class PreferenceDataset(Dataset):
+    def __init__(self, dataframe, transform=None):
+        self.preferences_df = dataframe
+        self.transform = transform
 
-        # Validation loop
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for images, tags in val_loader:
-                images = images.to(device)
-                tags = tags.to(device)
-                outputs = model(images)
-                loss = criterion(outputs, tags)
-                val_loss += loss.item()
-        avg_val_loss = val_loss / len(val_loader)
-        print(f"Validation Loss: {avg_val_loss}")
+    def __len__(self):
+        return len(self.preferences_df)
 
-        # Save the best model
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            torch.save(model.state_dict(), f'models/{model_save_name}')
-            print(f"Model saved with Validation Loss: {best_val_loss}")
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
 
+        img_a_path = self.preferences_df.iloc[idx]['image1_path']
+        img_b_path = self.preferences_df.iloc[idx]['image2_path']
+        
+        if not os.path.exists(img_a_path):
+            raise FileNotFoundError(f"Image not found at {img_a_path}")
+        if not os.path.exists(img_b_path):
+            raise FileNotFoundError(f"Image not found at {img_b_path}")
+            
+        image_a = Image.open(img_a_path).convert('RGB')
+        image_b = Image.open(img_b_path).convert('RGB')
+        
+        label = self.preferences_df.iloc[idx]['label']
+        
+        if self.transform:
+            image_a = self.transform(image_a)
+            image_b = self.transform(image_b)
+            
+        return image_a, image_b, torch.tensor(label, dtype=torch.float32)
 
-def main():
-    # Load and preprocess tags and get imagefile names
-    metadata_file = 'dataset/metadata.csv'
-    image_src_dir = "dataset/images"
+# --- 2. Siamese Network Architecture (No changes needed) ---
+class SiameseNetwork(nn.Module):
+    def __init__(self, model_name=MODEL_NAME, pretrained=True):
+        super(SiameseNetwork, self).__init__()
+        self.backbone = timm.create_model(model_name, pretrained=pretrained)
+        num_ftrs = self.backbone.num_features
+        self.backbone.head = nn.Linear(num_ftrs, 1)
+
+    def forward_one(self, x):
+        return self.backbone(x)
+
+    def forward(self, image_a, image_b):
+        score_a = self.forward_one(image_a)
+        score_b = self.forward_one(image_b)
+        return score_a.squeeze(), score_b.squeeze()
+
+# --- 3. The Training and Validation Loop (HEAVILY UPDATED) ---
+def train_model():
+    print(f"Using device: {DEVICE}")
+
+    # --- Data Loading and Splitting ---
+    full_df = pd.read_csv(
+        CSV_PATH,
+        dtype={'image1_path': str, 'image2_path': str, 'label': float}
+    )
+    # Split the dataframe into training and validation sets
+    train_df, val_df = train_test_split(full_df, test_size=VALIDATION_SPLIT, random_state=42)
+    print(f"Data split: {len(train_df)} training samples, {len(val_df)} validation samples.")
+
+    # --- Model and Transforms ---
+    model = SiameseNetwork().to(DEVICE)
+    data_config = timm.data.resolve_model_data_config(model.backbone)
+    input_size = data_config['input_size']
     
-    image_filenames, binary_tags, num_tags = preprocess_data(metadata_file)
-    #set image transformation
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize(size=input_size[1:], interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
+        transforms.CenterCrop(size=input_size[1:]),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize(mean=data_config['mean'], std=data_config['std']),
     ])
 
-    #Split data into training and validation sets
-    train_indices, val_indices = train_test_split(range(len(image_filenames)), test_size=0.2, random_state=42)
-    train_dataset = Subset(AnimeDataset(image_filenames, binary_tags, image_src_dir=image_src_dir, transform=transform), train_indices)
-    val_dataset = Subset(AnimeDataset(image_filenames, binary_tags, image_src_dir=image_src_dir, transform=transform), val_indices)
+    # Create separate datasets and dataloaders for training and validation
+    train_dataset = PreferenceDataset(dataframe=train_df, transform=transform)
+    val_dataset = PreferenceDataset(dataframe=val_df, transform=transform)
     
-    #adjust batch_size and num_workers based on personal hardware resources
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True)
-    
-    #train the model
-    model_name = "anime_tagger.pth"
-    anifeatures_trainer(train_loader, val_loader, num_tags, model_save_name=model_name)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
-if __name__ == "__main__":
-    main()
+    # --- Loss and Optimizer ---
+    criterion = nn.MarginRankingLoss(margin=MARGIN)
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+
+    # --- Checkpointing & Early Stopping Variables ---
+    best_val_loss = np.inf
+    epochs_no_improve = 0
+
+    print(f"\nStarting training for a maximum of {EPOCHS} epochs...")
+    print(f"Early stopping patience set to {PATIENCE} epochs.")
+
+    for epoch in range(EPOCHS):
+        # --- Training Phase ---
+        model.train()
+        running_train_loss = 0.0
+        for image_a, image_b, labels in train_loader:
+            image_a, image_b, labels = image_a.to(DEVICE), image_b.to(DEVICE), labels.to(DEVICE)
+            
+            optimizer.zero_grad()
+            score_a, score_b = model(image_a, image_b)
+            loss = criterion(score_a, score_b, labels)
+            loss.backward()
+            optimizer.step()
+            running_train_loss += loss.item() * image_a.size(0)
+
+        # --- Validation Phase ---
+        model.eval()
+        running_val_loss = 0.0
+        with torch.no_grad(): # No need to compute gradients during validation
+            for image_a, image_b, labels in val_loader:
+                image_a, image_b, labels = image_a.to(DEVICE), image_b.to(DEVICE), labels.to(DEVICE)
+                score_a, score_b = model(image_a, image_b)
+                loss = criterion(score_a, score_b, labels)
+                running_val_loss += loss.item() * image_a.size(0)
+
+        # --- Epoch Summary & Checkpointing ---
+        avg_train_loss = running_train_loss / len(train_dataset)
+        avg_val_loss = running_val_loss / len(val_dataset)
+
+        print(f"Epoch [{epoch+1}/{EPOCHS}] | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+
+        # Checkpoint the best model
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            epochs_no_improve = 0
+            torch.save(model.state_dict(), BEST_MODEL_PATH)
+            print(f"  -> Validation loss improved. Saving best model to {BEST_MODEL_PATH}")
+        else:
+            epochs_no_improve += 1
+            print(f"  -> Validation loss did not improve. Patience: {epochs_no_improve}/{PATIENCE}")
+
+        # Early stopping condition
+        if epochs_no_improve >= PATIENCE:
+            print(f"\nEarly stopping triggered after {epoch+1} epochs.")
+            break
+
+    print('\nFinished Training.')
+    print(f"The best model (Val Loss: {best_val_loss:.4f}) is saved at {BEST_MODEL_PATH}")
+
+if __name__ == '__main__':
+    train_model()
